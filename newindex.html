@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    待办事项管理 | TaskFlow 云端版
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入腾讯云开发SDK -->
+    <script src="https://imgcache.qq.com/qcloud/tcb-js-sdk/latest/tcb-js-sdk.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#60A5FA',
+                        accent: '#EF4444',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        info: '#3B82F6',
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+                        'card-hover': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        'elevated': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .task-complete {
+                @apply line-through text-gray-400;
+            }
+            .gradient-bg {
+                background: linear-gradient(135deg, #EFF6FF 0%, #FFFFFF 100%);
+            }
+            .gradient-primary {
+                background: linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%);
+            }
+            .priority-high {
+                @apply border-l-4 border-accent;
+            }
+            .priority-medium {
+                @apply border-l-4 border-warning;
+            }
+            .priority-low {
+                @apply border-l-4 border-info;
+            }
+            .priority-none {
+                @apply border-l-4 border-gray-300;
+            }
+            .slide-in {
+                animation: slideIn 0.3s ease-out forwards;
+            }
+            .fade-in {
+                animation: fadeIn 0.3s ease-out forwards;
+            }
+            .scale-in {
+                animation: scaleIn 0.2s ease-out forwards;
+            }
+            .pulse-subtle {
+                animation: pulseSubtle 2s infinite;
+            }
+        }
+        @keyframes slideIn {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes scaleIn {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes pulseSubtle {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+    </style>
+</head>
+<body class="font-inter min-h-screen gradient-bg text-dark antialiased">
+    <!-- 顶部通知条 -->
+    <div id="toastNotification" class="fixed top-0 left-0 right-0 py-3 px-4 text-center text-white transform -translate-y-full opacity-0 transition-all duration-300 z-50"></div>
+    <!-- 确认操作面板 -->
+    <div id="confirmOverlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-elevated max-w-md w-full p-6 transform transition-all scale-95 opacity-0" id="confirmDialog">
+            <h3 id="confirmTitle" class="text-lg font-semibold text-gray-800 mb-2"></h3>
+            <p id="confirmMessage" class="text-gray-600 mb-6"></p>
+            <div class="flex justify-end space-x-3">
+                <button id="confirmCancel" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">
+                    取消
+                </button>
+                <button id="confirmOk" class="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors">
+                    确认
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- 登录弹窗 -->
+    <div id="loginOverlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-elevated max-w-md w-full p-6 transform transition-all scale-95 opacity-0">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4">账号登录/注册</h3>
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
+                    <input type="email" id="loginEmail" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary" placeholder="你的邮箱" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                    <input type="password" id="loginPassword" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary" placeholder="设置密码" required>
+                </div>
+                <p class="text-xs text-gray-500">未注册的邮箱会自动创建账号</p>
+                <button type="submit" class="w-full gradient-primary text-white py-2.5 rounded-lg hover:opacity-95">
+                    登录/注册
+                </button>
+            </form>
+            <button id="closeLogin" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+    </div>
+    <header class="w-full py-6 px-4 md:px-8 bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300 sticky top-0 z-10">
+        <div class="max-w-6xl mx-auto flex items-center">
+            <h1 class="text-[clamp(1.75rem,3vw,2.5rem)] font-bold text-gray-800 flex items-center">
+                <i class="fa fa-check-square-o mr-3 text-primary text-3xl"></i>
+                <span>TaskFlow</span>
+                <span class="ml-2 text-sm font-normal text-gray-500 hidden sm:inline-block">云端待办，多端同步</span>
+            </h1>
+            <!-- 用户登录区域 -->
+            <div class="ml-auto flex items-center">
+                <div id="userArea" class="hidden items-center">
+                    <span id="userEmail" class="text-sm text-gray-600 mr-3"></span>
+                    <button id="logoutBtn" class="text-sm text-primary hover:underline">退出登录</button>
+                </div>
+                <button id="loginBtn" class="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90">
+                    登录/注册
+                </button>
+            </div>
+        </div>
+    </header>
+    <main class="flex-grow w-full px-4 md:px-8 py-8">
+        <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-card overflow-hidden transition-all duration-300 hover:shadow-card-hover">
+            <!-- 导航标签 -->
+            <div class="flex border-b">
+                <button id="navTasks" class="nav-tab px-6 py-4 font-medium text-primary border-b-2 border-primary transition-all duration-200">
+                    <i class="fa fa-list-ul mr-2"></i>任务管理
+                </button>
+                <button id="navTrash" class="nav-tab px-6 py-4 font-medium text-gray-500 hover:text-gray-700 transition-all duration-200">
+                    <i class="fa fa-trash mr-2"></i>回收站
+                </button>
+            </div>
+            <!-- 任务管理区域 -->
+            <div id="tasksSection" class="flex flex-col md:flex-row">
+                <!-- 左侧：添加/编辑任务区域 -->
+                <div class="p-6 md:p-8 border-b md:border-b-0 md:border-r border-gray-100 w-full md:w-1/3 bg-gray-50">
+                    <h2 id="formTitle" class="text-xl font-semibold text-gray-700 mb-6 flex items-center">
+                        <i class="fa fa-plus-circle text-primary mr-2"></i>添加新任务
+                    </h2>
+                    <form id="taskForm" class="space-y-5">
+                        <input type="hidden" id="taskId">
+                        <div>
+                            <label for="taskTitle" class="block text-sm font-medium text-gray-700 mb-1">任务标题 <span class="text-accent">*</span></label>
+                            <input type="text" id="taskTitle" 
+                                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200"
+                                placeholder="输入任务标题..." required>
+                        </div>
+                        <div>
+                            <label for="taskDescription" class="block text-sm font-medium text-gray-700 mb-1">任务描述</label>
+                            <textarea id="taskDescription" rows="3" 
+                                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200"
+                                placeholder="输入任务描述..."></textarea>
+                        </div>
+                        <!-- 优先级选择 -->
+                        <div>
+                            <label for="taskPriority" class="block text-sm font-medium text-gray-700 mb-1">优先级</label>
+                            <select id="taskPriority" 
+                                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200 bg-white">
+                                <option value="none">无</option>
+                                <option value="low">低</option>
+                                <option value="medium">中</option>
+                                <option value="high">高</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="taskDueDateTime" class="block text-sm font-medium text-gray-700 mb-1">截止日期时间 <span class="text-accent">*</span></label>
+                            <input type="datetime-local" id="taskDueDateTime" 
+                                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200"
+                                required>
+                            <p id="dateError" class="text-accent text-sm mt-1 hidden">截止日期时间不能早于当前时间</p>
+                        </div>
+                        <!-- 提醒选项 -->
+                        <div class="flex items-center">
+                            <input type="checkbox" id="taskRemind" class="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary">
+                            <label for="taskRemind" class="ml-2 text-sm text-gray-700">开启到期邮件提醒</label>
+                        </div>
+                        <div class="flex space-x-3 pt-2">
+                            <button type="button" id="submitTaskButton"
+                                class="flex-1 gradient-primary hover:opacity-95 text-white font-medium py-2.5 px-4 rounded-lg transition-all duration-200 transform hover:scale-[1.02] flex items-center justify-center shadow-sm">
+                                <i class="fa fa-plus mr-2"></i>添加任务
+                            </button>
+                            <button type="button" id="cancelEditButton" class="hidden px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-all duration-200">
+                                <i class="fa fa-times"></i>
+                            </button>
+                        </div>
+                    </form>
+                    <!-- 快速统计卡片 -->
+                    <div class="mt-8 bg-white rounded-xl shadow-sm p-5 border border-gray-100 slide-in">
+                        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">任务概览</h3>
+                        <div class="space-y-5">
+                            <div>
+                                <div class="flex justify-between text-sm mb-1.5">
+                                    <span class="text-gray-600">完成进度</span>
+                                    <span id="completionRate" class="font-medium">0%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                    <div id="progressBar" class="bg-primary h-2.5 rounded-full transition-all duration-1000 ease-out" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <!-- 按优先级统计 -->
+                            <div>
+                                <p class="text-xs text-gray-500 mb-2.5">按优先级分布</p>
+                                <div class="space-y-2.5">
+                                    <div class="flex items-center">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-accent mr-2"></span>
+                                        <span class="text-xs text-gray-600 flex-1">高优先级</span>
+                                        <span id="highPriorityCount" class="text-xs font-medium">0</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-warning mr-2"></span>
+                                        <span class="text-xs text-gray-600 flex-1">中优先级</span>
+                                        <span id="mediumPriorityCount" class="text-xs font-medium">0</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-info mr-2"></span>
+                                        <span class="text-xs text-gray-600 flex-1">低优先级</span>
+                                        <span id="lowPriorityCount" class="text-xs font-medium">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 右侧：任务列表区域 -->
+                <div class="p-6 md:p-8 w-full md:w-2/3">
+                    <div class="mb-6">
+                        <h2 class="text-xl font-semibold text-gray-700 flex items-center mb-4">
+                            <i class="fa fa-tasks text-primary mr-2"></i>任务列表
+                        </h2>
+                        
+                        <!-- 搜索框 -->
+                        <div class="relative mb-4">
+                            <input type="text" id="searchInput" 
+                                class="pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all duration-200 w-full"
+                                placeholder="搜索任务标题或描述...">
+                            <i class="fa fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        </div>
+                        
+                        <!-- 过滤按钮 -->
+                        <div class="flex flex-wrap gap-2">
+                            <button id="filterAll" class="filter-btn px-3.5 py-1.5 rounded-md text-sm bg-primary text-white shadow-sm">全部</button>
+                            <button id="filterActive" class="filter-btn px-3.5 py-1.5 rounded-md text-sm bg-gray-100 hover:bg-gray-200 transition-colors">未完成</button>
+                            <button id="filterCompleted" class="filter-btn px-3.5 py-1.5 rounded-md text-sm bg-gray-100 hover:bg-gray-200 transition-colors">已完成</button>
+                            <button id="clearCompleted" class="px-3.5 py-1.5 rounded-md text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors ml-auto">
+                                <i class="fa fa-trash-o mr-1"></i>清空已完成
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 任务列表 -->
+                    <div id="taskList" class="space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
+                        <!-- 任务项会通过JavaScript动态添加 -->
+                        <div class="text-center text-gray-400 py-10" id="emptyTaskList">
+                            <i class="fa fa-inbox text-4xl mb-3 block text-gray-300"></i>
+                            <p>暂无任务，请添加新任务</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 回收站区域 -->
+            <div id="trashSection" class="p-6 md:p-8 hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-semibold text-gray-700 flex items-center">
+                        <i class="fa fa-trash text-accent mr-2"></i>回收站
+                    </h2>
+                    <button id="emptyTrash" class="px-4 py-2 rounded-md text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
+                        <i class="fa fa-fire mr-1"></i>清空回收站
+                    </button>
+                </div>
+                <!-- 回收站说明 -->
+                <div class="bg-amber-50 border-l-4 border-amber-400 p-4 mb-6 rounded">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fa fa-info-circle text-amber-500"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-amber-700">
+                                已删除的任务将在回收站中保留30天，超过期限将被云端自动永久删除。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div id="trashList" class="space-y-3">
+                    <div class="text-center text-gray-400 py-10">
+                        <i class="fa fa-inbox text-4xl mb-3 block text-gray-300"></i>
+                        <p>回收站为空</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // ==================== 腾讯云开发配置 ====================
+        // 把这里的 envId 替换成你自己的云开发环境ID！
+        const ENV_ID = 'time-task-0gmsamlm374752d3';
+        const app = tcb.init({
+            env: ENV_ID
+        });
+        const auth = app.auth();
+        const db = app.database();
+        
+        // 当前用户
+        let currentUser = null;
+        // 数据
+        let tasks = [];
+        let deletedTasks = [];
+        let currentFilter = 'all';
+        let searchKeyword = '';
+
+        // DOM元素
+        const toastNotification = document.getElementById('toastNotification');
+        const confirmOverlay = document.getElementById('confirmOverlay');
+        const confirmDialog = document.getElementById('confirmDialog');
+        const loginOverlay = document.getElementById('loginOverlay');
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 初始化日期最小值
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('taskDueDateTime').min = now.toISOString().slice(0, 16);
+
+            // 监听登录状态
+            auth.onLoginStateChanged(user => {
+                currentUser = user;
+                updateUserUI();
+                if (user) {
+                    // 登录了，加载云端数据
+                    loadCloudData();
+                    showToast('登录成功，已同步云端数据', 'success');
+                } else {
+                    // 未登录，加载本地数据
+                    loadLocalData();
+                }
+            });
+
+            // 绑定事件
+            bindEvents();
+            // 初始化本地数据
+            loadLocalData();
+        });
+
+        // 更新用户UI
+        function updateUserUI() {
+            const userArea = document.getElementById('userArea');
+            const loginBtn = document.getElementById('loginBtn');
+            if (currentUser) {
+                userArea.classList.remove('hidden');
+                userArea.classList.add('flex');
+                loginBtn.classList.add('hidden');
+                document.getElementById('userEmail').textContent = currentUser.email;
+            } else {
+                userArea.classList.add('hidden');
+                userArea.classList.remove('flex');
+                loginBtn.classList.remove('hidden');
+            }
+        }
+
+        // 加载本地数据
+        function loadLocalData() {
+            const localTasks = localStorage.getItem('tasks');
+            const localDeleted = localStorage.getItem('deletedTasks');
+            tasks = localTasks ? JSON.parse(localTasks) : [];
+            deletedTasks = localDeleted ? JSON.parse(localDeleted) : [];
+            // 清理本地过期回收站数据
+            cleanExpiredTrash();
+            renderTasks();
+            renderTrash();
+            updateStats();
+        }
+
+        // 加载云端数据
+        async function loadCloudData() {
+            try {
+                // 获取用户的任务
+                const taskRes = await db.collection('users').doc(currentUser.uid).collection('tasks').get();
+                tasks = taskRes.data ? taskRes.data.tasks : [];
+                
+                // 获取回收站
+                const trashRes = await db.collection('users').doc(currentUser.uid).collection('trash').get();
+                deletedTasks = trashRes.data ? trashRes.data.tasks : [];
+                
+                // 把本地的旧数据同步到云端（如果本地有数据的话）
+                const localTasks = localStorage.getItem('tasks');
+                const localDeleted = localStorage.getItem('deletedTasks');
+                if (localTasks) {
+                    const localTaskArr = JSON.parse(localTasks);
+                    if (localTaskArr.length > 0 && tasks.length === 0) {
+                        // 本地有数据，云端没有，同步过去
+                        tasks = localTaskArr;
+                        await saveTasksToCloud();
+                    }
+                    localStorage.removeItem('tasks');
+                }
+                if (localDeleted) {
+                    const localTrashArr = JSON.parse(localDeleted);
+                    if (localTrashArr.length > 0 && deletedTasks.length === 0) {
+                        deletedTasks = localTrashArr;
+                        await saveTrashToCloud();
+                    }
+                    localStorage.removeItem('deletedTasks');
+                }
+                
+                renderTasks();
+                renderTrash();
+                updateStats();
+            } catch (e) {
+                console.error(e);
+                showToast('加载云端数据失败，暂时使用本地存储', 'error');
+                loadLocalData();
+            }
+        }
+
+        // 保存任务到云端
+        async function saveTasksToCloud() {
+            if (!currentUser) return;
+            try {
+                await db.collection('users').doc(currentUser.uid).collection('tasks').set({
+                    tasks: tasks,
+                    updateTime: new Date()
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // 保存回收站到云端
+        async function saveTrashToCloud() {
+            if (!currentUser) return;
+            try {
+                await db.collection('users').doc(currentUser.uid).collection('trash').set({
+                    tasks: deletedTasks,
+                    updateTime: new Date()
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // 保存本地数据
+        function saveLocalData() {
+            if (currentUser) return; // 登录了就不存本地了
+            localStorage.setItem('tasks', JSON.stringify(tasks));
+            localStorage.setItem('deletedTasks', JSON.stringify(deletedTasks));
+        }
+
+        // 清理过期回收站数据
+        function cleanExpiredTrash() {
+            const now = Date.now();
+            const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+            deletedTasks = deletedTasks.filter(task => {
+                return now - task.deletedAt < thirtyDays;
+            });
+            saveLocalData();
+        }
+
+        // 绑定所有事件
+        function bindEvents() {
+            // 导航
+            document.getElementById('navTasks').addEventListener('click', () => switchTab('tasks'));
+            document.getElementById('navTrash').addEventListener('click', () => switchTab('trash'));
+
+            // 登录相关
+            document.getElementById('loginBtn').addEventListener('click', showLoginModal);
+            document.getElementById('closeLogin').addEventListener('click', hideLoginModal);
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+
+            // 任务表单
+            document.getElementById('submitTaskButton').addEventListener('click', handleSubmitTask);
+            document.getElementById('cancelEditButton').addEventListener('click', cancelEdit);
+
+            // 过滤
+            document.getElementById('filterAll').addEventListener('click', () => setFilter('all'));
+            document.getElementById('filterActive').addEventListener('click', () => setFilter('active'));
+            document.getElementById('filterCompleted').addEventListener('click', () => setFilter('completed'));
+
+            // 搜索
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                searchKeyword = e.target.value;
+                renderTasks();
+            });
+
+            // 清空已完成
+            document.getElementById('clearCompleted').addEventListener('click', clearCompleted);
+
+            // 清空回收站
+            document.getElementById('emptyTrash').addEventListener('click', emptyTrash);
+
+            // 确认对话框
+            document.getElementById('confirmCancel').addEventListener('click', hideConfirm);
+        }
+
+        // 登录相关
+        function showLoginModal() {
+            loginOverlay.classList.remove('hidden');
+            loginOverlay.classList.add('flex');
+            setTimeout(() => {
+                confirmDialog.classList.remove('scale-95', 'opacity-0');
+                confirmDialog.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        }
+
+        function hideLoginModal() {
+            loginOverlay.classList.add('hidden');
+            loginOverlay.classList.remove('flex');
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                hideLoginModal();
+            } catch (e) {
+                // 如果用户不存在，自动注册
+                if (e.code === 'AUTH_WRONG_PASSWORD' || e.code === 'AUTH_USER_NOT_FOUND') {
+                    try {
+                        await auth.createUserWithEmailAndPassword(email, password);
+                        hideLoginModal();
+                    } catch (regErr) {
+                        showToast('登录失败：' + regErr.message, 'error');
+                    }
+                } else {
+                    showToast('登录失败：' + e.message, 'error');
+                }
+            }
+        }
+
+        async function handleLogout() {
+            try {
+                await auth.signOut();
+                showToast('已退出登录', 'success');
+                loadLocalData();
+            } catch (e) {
+                showToast('退出失败：' + e.message, 'error');
+            }
+        }
+
+        // 切换标签
+        function switchTab(tab) {
+            if (tab === 'tasks') {
+                document.getElementById('navTasks').classList.add('text-primary', 'border-b-2', 'border-primary');
+                document.getElementById('navTasks').classList.remove('text-gray-500');
+                document.getElementById('navTrash').classList.remove('text-primary', 'border-b-2', 'border-primary');
+                document.getElementById('navTrash').classList.add('text-gray-500');
+                document.getElementById('tasksSection').classList.remove('hidden');
+                document.getElementById('trashSection').classList.add('hidden');
+            } else {
+                document.getElementById('navTrash').classList.add('text-primary', 'border-b-2', 'border-primary');
+                document.getElementById('navTrash').classList.remove('text-gray-500');
+                document.getElementById('navTasks').classList.remove('text-primary', 'border-b-2', 'border-primary');
+                document.getElementById('navTasks').classList.add('text-gray-500');
+                document.getElementById('trashSection').classList.remove('hidden');
+                document.getElementById('tasksSection').classList.add('hidden');
+            }
+        }
+
+        // 提交任务
+        async function handleSubmitTask() {
+            const title = document.getElementById('taskTitle').value.trim();
+            const description = document.getElementById('taskDescription').value.trim();
+            const priority = document.getElementById('taskPriority').value;
+            const dueDateTime = document.getElementById('taskDueDateTime').value;
+            const remind = document.getElementById('taskRemind').checked;
+            const taskId = document.getElementById('taskId').value;
+
+            // 验证
+            if (!title) {
+                showToast('任务标题不能为空', 'error');
+                return;
+            }
+            if (!dueDateTime) {
+                showToast('请选择截止时间', 'error');
+                return;
+            }
+            const now = new Date();
+            const dueDate = new Date(dueDateTime);
+            if (dueDate < now) {
+                document.getElementById('dateError').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('dateError').classList.add('hidden');
+
+            if (taskId) {
+                // 编辑任务
+                const index = tasks.findIndex(t => t.id === taskId);
+                if (index !== -1) {
+                    tasks[index] = {
+                        ...tasks[index],
+                        title,
+                        description,
+                        priority,
+                        dueDate: dueDate.toISOString(),
+                        remind,
+                        reminded: false
+                    };
+                }
+                showToast('任务更新成功', 'success');
+            } else {
+                // 添加新任务
+                const newTask = {
+                    id: Date.now().toString(),
+                    title,
+                    description,
+                    priority,
+                    dueDate: dueDate.toISOString(),
+                    completed: false,
+                    createdAt: new Date().toISOString(),
+                    remind,
+                    reminded: false
+                };
+                tasks.push(newTask);
+                showToast('任务添加成功', 'success');
+            }
+
+            // 排序任务：优先级高的在前，截止时间早的在前
+            sortTasks();
+
+            // 保存
+            if (currentUser) {
+                await saveTasksToCloud();
+            } else {
+                saveLocalData();
+            }
+
+            // 重置表单
+            resetForm();
+            renderTasks();
+            updateStats();
+        }
+
+        // 任务排序
+        function sortTasks() {
+            const priorityOrder = { high: 0, medium: 1, low: 2, none: 3 };
+            tasks.sort((a, b) => {
+                // 先按优先级
+                const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+                if (pDiff !== 0) return pDiff;
+                // 再按截止时间
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            });
+        }
+
+        // 重置表单
+        function resetForm() {
+            document.getElementById('taskForm').reset();
+            document.getElementById('taskId').value = '';
+            document.getElementById('formTitle').innerHTML = '<i class="fa fa-plus-circle text-primary mr-2"></i>添加新任务';
+            document.getElementById('submitTaskButton').innerHTML = '<i class="fa fa-plus mr-2"></i>添加任务';
+            document.getElementById('cancelEditButton').classList.add('hidden');
+            // 重置日期最小值
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('taskDueDateTime').min = now.toISOString().slice(0, 16);
+        }
+
+        // 取消编辑
+        function cancelEdit() {
+            resetForm();
+        }
+
+        // 设置过滤
+        function setFilter(filter) {
+            currentFilter = filter;
+            // 更新按钮样式
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('bg-primary', 'text-white');
+                btn.classList.add('bg-gray-100', 'text-gray-700');
+            });
+            event.target.classList.remove('bg-gray-100', 'text-gray-700');
+            event.target.classList.add('bg-primary', 'text-white');
+            renderTasks();
+        }
+
+        // 渲染任务列表
+        function renderTasks() {
+            const taskList = document.getElementById('taskList');
+            const emptyTip = document.getElementById('emptyTaskList');
+
+            // 过滤和搜索
+            let filteredTasks = tasks.filter(task => {
+                // 过滤状态
+                if (currentFilter === 'active' && task.completed) return false;
+                if (currentFilter === 'completed' && !task.completed) return false;
+                // 搜索
+                if (searchKeyword) {
+                    const keyword = searchKeyword.toLowerCase();
+                    return task.title.toLowerCase().includes(keyword) || 
+                           (task.description && task.description.toLowerCase().includes(keyword));
+                }
+                return true;
+            });
+
+            if (filteredTasks.length === 0) {
+                emptyTip.classList.remove('hidden');
+                taskList.innerHTML = '';
+                return;
+            }
+            emptyTip.classList.add('hidden');
+
+            taskList.innerHTML = filteredTasks.map(task => {
+                const dueDate = new Date(task.dueDate);
+                const now = new Date();
+                const diff = dueDate - now;
+                const isExpired = diff < 0 && !task.completed;
+                const daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                
+                let timeText = '';
+                if (isExpired) {
+                    timeText = `<span class="text-accent text-xs">已过期 ${Math.abs(daysLeft)} 天</span>`;
+                } else if (daysLeft === 0) {
+                    timeText = `<span class="text-warning text-xs">今天截止</span>`;
+                } else if (daysLeft === 1) {
+                    timeText = `<span class="text-warning text-xs">明天截止</span>`;
+                } else {
+                    timeText = `<span class="text-gray-500 text-xs">剩余 ${daysLeft} 天</span>`;
+                }
+
+                return `
+                <div class="p-4 bg-white border border-gray-100 rounded-lg shadow-sm priority-${task.priority} slide-in hover:shadow-md transition-all duration-200 ${task.completed ? 'task-complete' : ''}">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0 mt-1">
+                            <input type="checkbox" class="task-check w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary" 
+                                ${task.completed ? 'checked' : ''} data-id="${task.id}">
+                        </div>
+                        <div class="ml-3 flex-1 min-w-0">
+                            <h3 class="font-medium text-gray-800 truncate">${task.title}</h3>
+                            ${task.description ? `<p class="text-sm text-gray-500 mt-1 line-clamp-2">${task.description}</p>` : ''}
+                            <div class="flex items-center mt-2 space-x-3">
+                                <span class="text-xs">${timeText}</span>
+                                ${task.remind ? '<span class="text-xs text-primary"><i class="fa fa-bell-o mr-1"></i>提醒已开</span>' : ''}
+                            </div>
+                        </div>
+                        <div class="flex space-x-1">
+                            <button class="task-edit p-2 text-gray-400 hover:text-primary transition-colors" data-id="${task.id}">
+                                <i class="fa fa-pencil"></i>
+                            </button>
+                            <button class="task-delete p-2 text-gray-400 hover:text-accent transition-colors" data-id="${task.id}">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            // 绑定任务事件
+            bindTaskEvents();
+        }
+
+        // 绑定任务项事件
+        function bindTaskEvents() {
+            // 状态切换
+            document.querySelectorAll('.task-check').forEach(checkbox => {
+                checkbox.addEventListener('change', async function() {
+                    const id = this.dataset.id;
+                    const task = tasks.find(t => t.id === id);
+                    if (task) {
+                        task.completed = this.checked;
+                        if (currentUser) {
+                            await saveTasksToCloud();
+                        } else {
+                            saveLocalData();
+                        }
+                        renderTasks();
+                        updateStats();
+                        showToast(task.completed ? '任务已完成' : '任务已恢复', 'success');
+                    }
+                });
+            });
+
+            // 编辑
+            document.querySelectorAll('.task-edit').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    const task = tasks.find(t => t.id === id);
+                    if (task) {
+                        // 填充表单
+                        document.getElementById('taskId').value = task.id;
+                        document.getElementById('taskTitle').value = task.title;
+                        document.getElementById('taskDescription').value = task.description || '';
+                        document.getElementById('taskPriority').value = task.priority;
+                        document.getElementById('taskRemind').checked = task.remind || false;
+                        // 日期
+                        const dueDate = new Date(task.dueDate);
+                        dueDate.setMinutes(dueDate.getMinutes() - dueDate.getTimezoneOffset());
+                        document.getElementById('taskDueDateTime').value = dueDate.toISOString().slice(0, 16);
+                        // 更新表单标题
+                        document.getElementById('formTitle').innerHTML = '<i class="fa fa-pencil text-primary mr-2"></i>编辑任务';
+                        document.getElementById('submitTaskButton').innerHTML = '<i class="fa fa-save mr-2"></i>保存修改';
+                        document.getElementById('cancelEditButton').classList.remove('hidden');
+                        // 滚动到表单位置
+                        document.getElementById('taskForm').scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+            });
+
+            // 删除
+            document.querySelectorAll('.task-delete').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    showConfirm('删除任务', '确定要把这个任务移到回收站吗？', async () => {
+                        const taskIndex = tasks.findIndex(t => t.id === id);
+                        if (taskIndex !== -1) {
+                            const task = tasks[taskIndex];
+                            task.deletedAt = Date.now();
+                            // 移到回收站
+                            deletedTasks.push(task);
+                            tasks.splice(taskIndex, 1);
+                            // 保存
+                            if (currentUser) {
+                                await saveTasksToCloud();
+                                await saveTrashToCloud();
+                            } else {
+                                saveLocalData();
+                            }
+                            renderTasks();
+                            renderTrash();
+                            updateStats();
+                            showToast('任务已移到回收站', 'success');
+                        }
+                    });
+                });
+            });
+        }
+
+        // 渲染回收站
+        function renderTrash() {
+            const trashList = document.getElementById('trashList');
+            if (deletedTasks.length === 0) {
+                trashList.innerHTML = `
+                <div class="text-center text-gray-400 py-10">
+                    <i class="fa fa-inbox text-4xl mb-3 block text-gray-300"></i>
+                    <p>回收站为空</p>
+                </div>
+                `;
+                return;
+            }
+
+            trashList.innerHTML = deletedTasks.map(task => {
+                const deletedAt = new Date(task.deletedAt);
+                const now = Date.now();
+                const daysLeft = Math.ceil(30 - (now - task.deletedAt) / (1000 * 60 * 60 * 24));
+                return `
+                <div class="p-4 bg-white border border-gray-100 rounded-lg shadow-sm priority-${task.priority} slide-in">
+                    <div class="flex items-center">
+                        <div class="flex-1">
+                            <h3 class="font-medium text-gray-800">${task.title}</h3>
+                            <p class="text-xs text-gray-500 mt-1">剩余 ${daysLeft} 天自动删除</p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button class="trash-restore px-3 py-1 text-sm text-primary border border-primary rounded hover:bg-primary/5 transition-colors" data-id="${task.id}">
+                                恢复
+                            </button>
+                            <button class="trash-delete px-3 py-1 text-sm text-accent border border-accent rounded hover:bg-accent/5 transition-colors" data-id="${task.id}">
+                                永久删除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            // 绑定回收站事件
+            document.querySelectorAll('.trash-restore').forEach(btn => {
+                btn.addEventListener('click', async function() {
+                    const id = this.dataset.id;
+                    const taskIndex = deletedTasks.findIndex(t => t.id === id);
+                    if (taskIndex !== -1) {
+                        const task = deletedTasks[taskIndex];
+                        delete task.deletedAt;
+                        tasks.push(task);
+                        deletedTasks.splice(taskIndex, 1);
+                        sortTasks();
+                        if (currentUser) {
+                            await saveTasksToCloud();
+                            await saveTrashToCloud();
+                        } else {
+                            saveLocalData();
+                        }
+                        renderTasks();
+                        renderTrash();
+                        updateStats();
+                        showToast('任务已恢复', 'success');
+                    }
+                });
+            });
+
+            document.querySelectorAll('.trash-delete').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    showConfirm('永久删除', '确定要永久删除这个任务吗？删除后无法恢复！', async () => {
+                        const taskIndex = deletedTasks.findIndex(t => t.id === id);
+                        if (taskIndex !== -1) {
+                            deletedTasks.splice(taskIndex, 1);
+                            if (currentUser) {
+                                await saveTrashToCloud();
+                            } else {
+                                saveLocalData();
+                            }
+                            renderTrash();
+                            showToast('任务已永久删除', 'success');
+                        }
+                    });
+                });
+            });
+        }
+
+        // 清空已完成任务
+        function clearCompleted() {
+            showConfirm('清空已完成', '确定要清空所有已完成的任务吗？它们会被移到回收站。', async () => {
+                const completed = tasks.filter(t => t.completed);
+                if (completed.length === 0) {
+                    showToast('没有已完成的任务', 'info');
+                    return;
+                }
+                // 移到回收站
+                completed.forEach(task => {
+                    task.deletedAt = Date.now();
+                    deletedTasks.push(task);
+                });
+                // 过滤掉已完成的
+                tasks = tasks.filter(t => !t.completed);
+                // 保存
+                if (currentUser) {
+                    await saveTasksToCloud();
+                    await saveTrashToCloud();
+                } else {
+                    saveLocalData();
+                }
+                renderTasks();
+                renderTrash();
+                updateStats();
+                showToast(`已清空 ${completed.length} 个已完成任务`, 'success');
+            });
+        }
+
+        // 清空回收站
+        function emptyTrash() {
+            showConfirm('清空回收站', '确定要清空回收站吗？所有任务将被永久删除，无法恢复！', async () => {
+                if (deletedTasks.length === 0) {
+                    showToast('回收站为空', 'info');
+                    return;
+                }
+                deletedTasks = [];
+                if (currentUser) {
+                    await saveTrashToCloud();
+                } else {
+                    saveLocalData();
+                }
+                renderTrash();
+                showToast('回收站已清空', 'success');
+            });
+        }
+
+        // 更新统计
+        function updateStats() {
+            const total = tasks.length;
+            const completed = tasks.filter(t => t.completed).length;
+            const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
+            document.getElementById('completionRate').textContent = rate + '%';
+            document.getElementById('progressBar').style.width = rate + '%';
+
+            // 优先级统计
+            const high = tasks.filter(t => t.priority === 'high' && !t.completed).length;
+            const medium = tasks.filter(t => t.priority === 'medium' && !t.completed).length;
+            const low = tasks.filter(t => t.priority === 'low' && !t.completed).length;
+            document.getElementById('highPriorityCount').textContent = high;
+            document.getElementById('mediumPriorityCount').textContent = medium;
+            document.getElementById('lowPriorityCount').textContent = low;
+        }
+
+        // 显示通知
+        function showToast(message, type = 'info') {
+            toastNotification.textContent = message;
+            if (type === 'success') {
+                toastNotification.className = 'fixed top-0 left-0 right-0 py-3 px-4 text-center text-white transform translate-y-0 opacity-100 transition-all duration-300 z-50 bg-success';
+            } else if (type === 'error') {
+                toastNotification.className = 'fixed top-0 left-0 right-0 py-3 px-4 text-center text-white transform translate-y-0 opacity-100 transition-all duration-300 z-50 bg-accent';
+            } else {
+                toastNotification.className = 'fixed top-0 left-0 right-0 py-3 px-4 text-center text-white transform translate-y-0 opacity-100 transition-all duration-300 z-50 bg-primary';
+            }
+            setTimeout(() => {
+                toastNotification.classList.remove('translate-y-0', 'opacity-100');
+                toastNotification.classList.add('-translate-y-full', 'opacity-0');
+            }, 3000);
+        }
+
+        // 显示确认框
+        function showConfirm(title, message, okCallback) {
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            confirmOverlay.classList.remove('hidden');
+            confirmOverlay.classList.add('flex');
+            setTimeout(() => {
+                confirmDialog.classList.remove('scale-95', 'opacity-0');
+                confirmDialog.classList.add('scale-100', 'opacity-100');
+            }, 10);
+            // 绑定确认按钮
+            document.getElementById('confirmOk').onclick = function() {
+                okCallback();
+                hideConfirm();
+            };
+        }
+
+        function hideConfirm() {
+            confirmDialog.classList.add('scale-95', 'opacity-0');
+            confirmDialog.classList.remove('scale-100', 'opacity-100');
+            setTimeout(() => {
+                confirmOverlay.classList.add('hidden');
+                confirmOverlay.classList.remove('flex');
+            }, 200);
+        }
+    </script>
+</body>
+</html>
